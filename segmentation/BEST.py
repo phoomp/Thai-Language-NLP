@@ -26,12 +26,15 @@ class CharacterTokenizer:
         return 'None'
 
 
-    def fit(self, text):
+    def fit(self, text, print_dict=False):
         for char in text:
             if char not in self.dictionary.keys():
                 self.dictionary[char] = len(self.dictionary)
 
         self.dictionary[self.oov_text] = len(self.dictionary)
+        
+        if print_dict:
+            print(self.dictionary)
 
 
     def load(self, load_path):
@@ -46,9 +49,7 @@ class CharacterTokenizer:
         text_str = ''
         if self.use_onehot:
             for i in range(tokens.shape[0]):
-                # print(tokens[i])
                 idx = np.argwhere(tokens[i] == 1)
-                # print(f'index: {idx}')
 
                 if idx == len(self.dictionary) - 1:
                     text_str += self.oov_text
@@ -90,6 +91,34 @@ class CharacterTokenizer:
 
         return np.array(tokens)
 
+
+class BESTText(Dataset):
+    def __init__(self, features, labels, surround):
+        self.features = features
+        self.labels = labels
+        self.surround = surround
+
+        print(self.labels[:20])
+        print(self.features[:20])
+    
+    def __len__(self):
+        return len(self.labels)
+    
+        
+    def __getitem__(self, idx):
+        if torch.is_tensor(idx):
+            idx = idx.to_list()
+
+        label = self.labels[idx]
+        
+        back_label = label - self.surround if label - self.surround > 0 else 0
+        forward_label = label + self.surround if label + self.surround < len(self.labels) - 1 else len(self.labels) - 1
+        
+        print(back_label)
+        print(forward_label)
+        
+        return feat, 
+            
 
 class BESTDataset(Dataset):
     def __init__(self, train_path=None, test_path=None):
@@ -135,15 +164,19 @@ class BESTDataset(Dataset):
         print(f'Sucessfully loaded BEST Dataset')
 
     
-    def filter(string, char):
+    def filter(self, string, char):
         string = string.replace(char, '')
         return string
 
 
     def clean(self, remove_list=[]):
-        # self.train_str = self.train_str.split('\n')
-        # self.test_str = self.test_str.split('\n')
-
+        """
+        Clean the data
+        """
+        
+        # self.train_str = self.train_str.replace('\n', ' ')
+        # self.test_str = self.test_str.replace('\n', ' ')
+        
         # Remove duplicate spaces
         self.train_str = self.train_str.split(' ')
         self.train_str = ' '.join(self.train_str)
@@ -153,17 +186,73 @@ class BESTDataset(Dataset):
 
         # Remove chars in remove_list
         for char in remove_list:
+            print(f'Removing char: "{char}"')
             self.train_str = self.filter(self.train_str, char)
-
-        for char in remove_list:
             self.test_str = self.filter(self.test_str, char)
 
     
-    def generate(self):
-        bar_idx = [m.start() for m in re.finditer(re.escape('|'), self.train_str)]
-        print(bar_idx[:10])
-        print(self.train_str[:30])
-        return     
+    def generate(self, mode='minimal'):
+        """
+        Generate the text and labels to be tokenized.
+        modes = 'minimal', 'full'
+        
+        Minimal: all word separators are treated as 1, else 0
+        Full: Refer to dictionary below. Make sure to filter these characters
+        before inputting data
+        
+        {
+            '^': beginning of named entity,
+            '=': end of named entity,
+            '+': beginnin of abbreviation,
+            '~': end of abbreviation
+        }
+        """
+        
+        if mode == 'minimal':
+            self.train_str = self.train_str.replace('<NE>', '')
+            self.train_str = self.train_str.replace('</NE>', '')
+            self.train_str = self.train_str.replace('<AB>', '')
+            self.train_str = self.train_str.replace('</AB>', '')
+            
+            self.test_str = self.test_str.replace('<NE>', '')
+            self.test_str = self.test_str.replace('</NE>', '')
+            self.test_str = self.test_str.replace('<AB>', '')
+            self.test_str = self.test_str.replace('</AB>', '')
+            
+            train_bar_idx = [m.start() for m in re.finditer(re.escape('|'), self.train_str)]
+            test_bar_idx = [m.start() for m in re.finditer(re.escape('|'), self.test_str)]
+            
+            # Indicates the end of previous word and start of next word
+            for i, idx in enumerate(train_bar_idx):
+                train_bar_idx[i] = idx - (i + 1)
+            
+            self.train_str = self.train_str.replace('|', '')
+            
+            for i, idx in enumerate(test_bar_idx):
+                test_bar_idx[i] = idx - (i + 1)
+            
+            self.train_str = self.train_str.replace('|', '')
+            self.test_str = self.test_str.replace('|', '')
+            
+            # 1-0 label whether the word should be separated at position or not
+            train_labels = np.zeros(len(self.train_str) - 1)
+            test_labels = np.zeros(len(self.test_str) - 1)
+            
+            for idx in train_bar_idx:
+                train_labels[idx] = 1
+            
+            for idx in test_bar_idx:
+                test_labels[idx] = 1
+                
+            print('processed train features')
+            print(self.test_str[:40])
+            print('processed train labels')
+            print(test_labels[:40])
+            
+            self.train_ds = (self.train_str, train_labels)
+            self.test_ds = (self.test_ds, test_labels)
+        else:
+            raise NotImplementedError  
 
 
     def __len__(self):

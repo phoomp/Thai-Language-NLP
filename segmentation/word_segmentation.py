@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 
-from BEST import BESTDataset, CharacterTokenizer
+from BEST import BESTDataset, BESTText, CharacterTokenizer
 
 
 parser = argparse.ArgumentParser('Train a word segmentation model')
@@ -26,13 +26,19 @@ def main():
     TEST_PATH = args.test_path
 
     dataset = BESTDataset(TRAIN_PATH, TEST_PATH)
-    dataset.clean() 
-
-    dataset.generate()
+    
+    char_remove_list = ['^', '=', '+', '~', r'\\', r'\ufeff']
+    
+    dataset.clean(remove_list=char_remove_list) 
+    features, labels = dataset.generate(mode='minimal')
 
     tokenizer = CharacterTokenizer(onehot=True)
 
-    tokenizer.fit(dataset.train_str)
+    tokenizer.fit(features, print_dict=True)
+    
+    dataset = BESTText(features, labels, surround=500)
+    
+    
 
     print('ready')
 
