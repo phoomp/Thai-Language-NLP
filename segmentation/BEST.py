@@ -90,34 +90,6 @@ class CharacterTokenizer:
             tokens = self.__onehot(tokens)
 
         return np.array(tokens)
-
-
-class BESTText(Dataset):
-    def __init__(self, features, labels, surround):
-        self.features = features
-        self.labels = labels
-        self.surround = surround
-
-        print(self.labels[:20])
-        print(self.features[:20])
-    
-    def __len__(self):
-        return len(self.labels)
-    
-        
-    def __getitem__(self, idx):
-        if torch.is_tensor(idx):
-            idx = idx.to_list()
-
-        label = self.labels[idx]
-        
-        back_label = label - self.surround if label - self.surround > 0 else 0
-        forward_label = label + self.surround if label + self.surround < len(self.labels) - 1 else len(self.labels) - 1
-        
-        print(back_label)
-        print(forward_label)
-        
-        return feat, 
             
 
 class BESTDataset(Dataset):
@@ -127,6 +99,8 @@ class BESTDataset(Dataset):
 
         self.train_str = ''
         self.test_str = ''
+        
+        self.tokenizer = None
 
         # self.train_str = self.train_str.decode()
         # self.test_str = self.test_str.decode()
@@ -191,7 +165,7 @@ class BESTDataset(Dataset):
             self.test_str = self.filter(self.test_str, char)
 
     
-    def generate(self, mode='minimal'):
+    def generate(self, mode='minimal', split=None):
         """
         Generate the text and labels to be tokenized.
         modes = 'minimal', 'full'
@@ -206,6 +180,12 @@ class BESTDataset(Dataset):
             '+': beginnin of abbreviation,
             '~': end of abbreviation
         }
+        
+        'split': indicates how the data should be split (not batching)
+        
+        if N (int), every N sentence, a split occurs
+        if 'sentence', split for every occurrence of '\n'
+        if None, do not split ~ 40 GB memory usage
         """
         
         if mode == 'minimal':
@@ -219,46 +199,84 @@ class BESTDataset(Dataset):
             self.test_str = self.test_str.replace('<AB>', '')
             self.test_str = self.test_str.replace('</AB>', '')
             
-            train_bar_idx = [m.start() for m in re.finditer(re.escape('|'), self.train_str)]
-            test_bar_idx = [m.start() for m in re.finditer(re.escape('|'), self.test_str)]
+            self.train_bar_idx = [m.start() for m in re.finditer(re.escape('|'), self.train_str)]
+            self.test_bar_idx = [m.start() for m in re.finditer(re.escape('|'), self.test_str)]
             
             # Indicates the end of previous word and start of next word
-            for i, idx in enumerate(train_bar_idx):
-                train_bar_idx[i] = idx - (i + 1)
+            for i, idx in enumerate(self.train_bar_idx):
+                self.train_bar_idx[i] = idx - (i + 1)
             
             self.train_str = self.train_str.replace('|', '')
             
-            for i, idx in enumerate(test_bar_idx):
-                test_bar_idx[i] = idx - (i + 1)
+            for i, idx in enumerate(self.test_bar_idx):
+                self.test_bar_idx[i] = idx - (i + 1)
             
             self.train_str = self.train_str.replace('|', '')
             self.test_str = self.test_str.replace('|', '')
             
             # 1-0 label whether the word should be separated at position or not
-            train_labels = np.zeros(len(self.train_str) - 1)
-            test_labels = np.zeros(len(self.test_str) - 1)
+            self.train_labels = np.zeros(len(self.train_str) - 1)
+            self.test_labels = np.zeros(len(self.test_str) - 1)
+
+            for idx in self.train_bar_idx:
+                self.train_labels[idx] = 1
             
-            for idx in train_bar_idx:
-                train_labels[idx] = 1
-            
-            for idx in test_bar_idx:
-                test_labels[idx] = 1
+            for idx in self.test_bar_idx:
+                self.test_labels[idx] = 1
                 
             print('processed train features')
             print(self.test_str[:40])
             print('processed train labels')
-            print(test_labels[:40])
-            
-            self.train_ds = (self.train_str, train_labels)
-            self.test_ds = (self.test_ds, test_labels)
+            print(self.test_labels[:40])
+
         else:
+            print('Modes other than minimal are not yet supported.')
             raise NotImplementedError  
 
-
+        if split == 'sentence':
+            self.train_ds = (self.train_str.split('\n'), self.train_labels)
+            self.test_ds = (self.test_str.split('\n'), self.test_labels)
+        
+        elif split == None:
+            self.train_ds = (self.train_str, self.train_labels)
+            self.test_ds = (self.test_str, self.test_labels)
+            
+        else:
+            print('Modes other than sentences are not yet supported')
+            raise NotImplementedError
+        
+        
+        return self.train_ds
+            
+            
     def __len__(self):
-        return len(self.train_str)
+        return len(self.train_labels)
 
 
     def __getitem__(self, idx):
+        """Get items based on index
+
+        Args:
+            idx (torch.Tensor or np.ndarray): Index for data to be retrieved
+        """
+        if self.tokenizer == None:
+            raise ValueError('self.tokenizer is None, please assign a valid tokenizer before enumerating the dataset')        
+        
         if torch.is_tensor(idx):
             idx = idx.to_list()
+
+        label = self.train_labels[idx]
+
+        left_idx = idx + 1 - self.surround
+        right_idx = idx + self.surround
+        
+        if left_idx < 0:
+            left_idx = 0
+            
+        if right_idx > len(self.train_str):
+            right_idx = 0
+
+        frame = self.train_str[back_label]
+        
+        
+        return frame, label
