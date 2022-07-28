@@ -11,11 +11,12 @@ import pickle
 
 
 class CharacterTokenizer:
-    def __init__(self, onehot=True):
+    def __init__(self, onehot=True, oov_text='<OOV>', oov_token=-1, pad_char='~'):
         self.use_onehot = onehot 
         self.dictionary = {}
-        self.oov_token = -1
-        self.oov_text = '<OOV>'
+        self.oov_token = oov_token
+        self.oov_text = oov_text
+        self.pad_char = pad_char
 
 
     def __get_key_from_value(self, value):
@@ -32,6 +33,7 @@ class CharacterTokenizer:
                 self.dictionary[char] = len(self.dictionary)
 
         self.dictionary[self.oov_text] = len(self.dictionary)
+        self.dictionary[self.pad_char] = len(self.dictionary)
         
         if print_dict:
             print(self.dictionary)
@@ -71,7 +73,7 @@ class CharacterTokenizer:
         for i, e in enumerate(x):
             arr[i][e] = 1
 
-        return arr
+        return np.swapaxes(arr, 0, 1)
 
 
     def __len__(self):
@@ -93,7 +95,7 @@ class CharacterTokenizer:
             
 
 class BESTDataset(Dataset):
-    def __init__(self, train_path=None, test_path=None):
+    def __init__(self, train_path=None, test_path=None, surround=128):
         self.train_path = train_path
         self.test_path = test_path
 
@@ -101,6 +103,7 @@ class BESTDataset(Dataset):
         self.test_str = ''
         
         self.tokenizer = None
+        self.surround = surround
 
         # self.train_str = self.train_str.decode()
         # self.test_str = self.test_str.decode()
@@ -150,6 +153,10 @@ class BESTDataset(Dataset):
         
         # self.train_str = self.train_str.replace('\n', ' ')
         # self.test_str = self.test_str.replace('\n', ' ')
+        
+        # Remove newline characters
+        self.train_str = self.train_str.replace('\n', ' ')
+        self.test_str = self.test_str.replace('\n', ' ')
         
         # Remove duplicate spaces
         self.train_str = self.train_str.split(' ')
@@ -250,7 +257,7 @@ class BESTDataset(Dataset):
             
             
     def __len__(self):
-        return len(self.train_labels)
+        return len(self.train_labels) - 1
 
 
     def __getitem__(self, idx):
@@ -270,13 +277,32 @@ class BESTDataset(Dataset):
         left_idx = idx + 1 - self.surround
         right_idx = idx + self.surround
         
+        delta_left = 0
+        delta_right = 0
+        
         if left_idx < 0:
+            delta_left = abs(left_idx)
             left_idx = 0
             
-        if right_idx > len(self.train_str):
-            right_idx = 0
+        if right_idx > len(self.train_str) - 1:
+            delta_right = right_idx - len(self.train_str) + 1
+            right_idx = len(self.train_str) - 1
 
-        frame = self.train_str[back_label]
         
+        frame = self.train_str[left_idx:right_idx + 1]
         
-        return frame, label
+        print(frame)
+
+        left_pad = self.tokenizer.pad_char * delta_left
+        right_pad = self.tokenizer.pad_char * delta_right
+
+        left_frame = ''.join((left_pad, frame[:idx+1]))
+        right_frame = ''.join((frame[idx+1:], right_pad))
+        
+        left_frame = self.tokenizer(left_frame)
+        right_frame = self.tokenizer(right_frame)
+        
+        left_frame = torch.Tensor(left_frame).to(torch.int64)
+        right_frame = torch.Tensor(right_frame).to(torch.int64)
+        
+        return left_frame, right_frame, label

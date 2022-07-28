@@ -1,7 +1,7 @@
 import argparse
 
 import torch
-from torch import nn
+from torch import embedding, nn
 import torchtext
 
 from torch.utils.data import TensorDataset, DataLoader
@@ -9,8 +9,10 @@ from torch.utils.data import TensorDataset, DataLoader
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
+from zmq import device
 
 from BEST import BESTDataset, CharacterTokenizer
+from BESTModels import SimpleLSTM
 
 
 parser = argparse.ArgumentParser('Train a word segmentation model')
@@ -24,10 +26,14 @@ def main():
     args = parser.parse_args()
     TRAIN_PATH = args.train_path
     TEST_PATH = args.test_path
-
-    dataset = BESTDataset(TRAIN_PATH, TEST_PATH)
     
-    char_remove_list = ['^', '=', '+', '~', r'\\', r'\ufeff']
+    surround = 64
+    batch_size = 2
+    device = 'mps'
+
+    dataset = BESTDataset(TRAIN_PATH, TEST_PATH, surround=surround)
+    
+    char_remove_list = ['^', '=', '+', '~', '\\\\', r'\ufeff', '_', '$', '?', '@', '#']
     
     dataset.clean(remove_list=char_remove_list) 
     features, labels = dataset.generate(mode='minimal')
@@ -40,12 +46,27 @@ def main():
     dataset.tokenizer.fit(features, print_dict=True)
 
     print('ready')
+    
+    vocab_size = len(dataset.tokenizer)
+    embedding_dim = surround
+    
+    loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
+    model = SimpleLSTM(vocab_size, embedding_dim, batch_size).to('mps')
+    
+    # TODO: Define a loss function for contrastive loss
+    # TODO: Generate len(loader) negative pairs
+    
+    print(len(dataset))
 
-    while True:
-        input_string = input()
-
-        print(dataset.tokenizer(input_string))
-        print(dataset.tokenizer.to_text(dataset.tokenizer(input_string)))
+    for batch, (left_frame, right_frame, label) in enumerate(loader):
+        left_frame = left_frame.to(device)
+        right_frame = right_frame.to(device)
+        
+        label = label.to(torch.int64).to(device)
+        x = model(left_frame, right_frame)
+        print(label)
+        if batch == 2:
+            break
 
     
 
