@@ -1,15 +1,7 @@
 import argparse
 
 import torch
-from torch import embedding, nn
-import torchtext
-
-from torch.utils.data import TensorDataset, DataLoader
-
-import numpy as np
-import pandas as pd
-from matplotlib import pyplot as plt
-from zmq import device
+from torch.utils.data import DataLoader
 
 from BEST import BESTDataset, CharacterTokenizer
 from BESTModels import SimpleLSTM
@@ -28,10 +20,10 @@ def main():
     TEST_PATH = args.test_path
     
     surround = 64
-    batch_size = 2
+    batch_size = 64
     device = 'mps'
 
-    dataset = BESTDataset(TRAIN_PATH, TEST_PATH, surround=surround)
+    dataset = BESTDataset(TRAIN_PATH, TEST_PATH, surround=surround, return_idx=True)
     
     char_remove_list = ['^', '=', '+', '~', '\\\\', r'\ufeff', '_', '$', '?', '@', '#']
     
@@ -50,23 +42,32 @@ def main():
     vocab_size = len(dataset.tokenizer)
     embedding_dim = surround
     
-    loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
+    loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
     model = SimpleLSTM(vocab_size, embedding_dim, batch_size).to('mps')
+    loss_fn = torch.nn.BCEWithLogitsLoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
     
     # TODO: Define a loss function for contrastive loss
     # TODO: Generate len(loader) negative pairs
     
     print(len(dataset))
 
-    for batch, (left_frame, right_frame, label) in enumerate(loader):
+    for batch, (left_frame, right_frame, label, idx) in enumerate(loader):
         left_frame = left_frame.to(device)
         right_frame = right_frame.to(device)
         
+        label = label.type(torch.LongTensor).to(device)
+        
         label = label.to(torch.int64).to(device)
-        x = model(left_frame, right_frame)
-        print(label)
-        if batch == 2:
-            break
+        prediction = model(left_frame, right_frame)
+        loss = loss_fn(prediction, label.float())
+        
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        
+        print(f'Batch {batch} of {len(loader) / batch_size}')
+        print(loss)
 
     
 

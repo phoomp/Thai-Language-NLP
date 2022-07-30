@@ -95,7 +95,7 @@ class CharacterTokenizer:
             
 
 class BESTDataset(Dataset):
-    def __init__(self, train_path=None, test_path=None, surround=128):
+    def __init__(self, train_path=None, test_path=None, surround=128, return_idx=False):
         self.train_path = train_path
         self.test_path = test_path
 
@@ -104,6 +104,7 @@ class BESTDataset(Dataset):
         
         self.tokenizer = None
         self.surround = surround
+        self.return_idx = return_idx
 
         # self.train_str = self.train_str.decode()
         # self.test_str = self.test_str.decode()
@@ -253,6 +254,8 @@ class BESTDataset(Dataset):
             raise NotImplementedError
         
         
+        self.train_labels = torch.Tensor(self.train_labels).to(torch.int64)
+        self.test_labels = torch.Tensor(self.test_labels).to(torch.int64)
         return self.train_ds
             
             
@@ -274,7 +277,7 @@ class BESTDataset(Dataset):
 
         label = self.train_labels[idx]
 
-        left_idx = idx + 1 - self.surround
+        left_idx = idx - self.surround
         right_idx = idx + self.surround
         
         delta_left = 0
@@ -289,15 +292,22 @@ class BESTDataset(Dataset):
             right_idx = len(self.train_str) - 1
 
         
-        frame = self.train_str[left_idx:right_idx + 1]
-        
-        print(frame)
+        frame = self.train_str
 
         left_pad = self.tokenizer.pad_char * delta_left
         right_pad = self.tokenizer.pad_char * delta_right
 
-        left_frame = ''.join((left_pad, frame[:idx+1]))
-        right_frame = ''.join((frame[idx+1:], right_pad))
+        if (len(left_pad)) > 0:
+            left_join = (left_pad, frame[left_idx:idx])
+            left_frame = ''.join(left_join)
+        else:
+            left_frame = frame[left_idx:idx]
+            
+        if (len(right_pad)) > 0:
+            right_join = (frame[idx:right_idx], right_pad)
+            right_frame = ''.join(right_join)
+        else:
+            right_frame = frame[idx:right_idx]
         
         left_frame = self.tokenizer(left_frame)
         right_frame = self.tokenizer(right_frame)
@@ -305,4 +315,7 @@ class BESTDataset(Dataset):
         left_frame = torch.Tensor(left_frame).to(torch.int64)
         right_frame = torch.Tensor(right_frame).to(torch.int64)
         
-        return left_frame, right_frame, label
+        if self.return_idx:
+            return left_frame, right_frame, label.unsqueeze(-1), idx
+        else:      
+            return left_frame, right_frame, label.unsqueeze(-1)

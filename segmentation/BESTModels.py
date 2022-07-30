@@ -1,22 +1,23 @@
-from unicodedata import bidirectional
-from matplotlib import projections
 import torch
 from torch import nn
-from torch.nn import functional as F
 
 
 class SimpleLSTM(nn.Module):
     def __init__(self, vocab_size, embedding_dim, batch_size):
         super().__init__()
         self.batch_size = batch_size
+        self.embed_dim = 16
         
-        self.embeddings = nn.Embedding(vocab_size, embedding_dim)
+        self.embeddings = nn.Embedding(vocab_size, self.embed_dim)
         
+        print('vocab')
         print(vocab_size)
+        print('embedding_dim')
         print(embedding_dim)
+        print('batch_size')
         print(batch_size)
         
-        self.lstm_input_size = int(vocab_size * embedding_dim * batch_size * (embedding_dim / 2))
+        self.lstm_input_size = int(embedding_dim * vocab_size * self.embed_dim)
         
         self.left_lstm = nn.Sequential(
             nn.LSTM(self.lstm_input_size, 128, batch_first=True)
@@ -30,8 +31,6 @@ class SimpleLSTM(nn.Module):
         
     
     def forward(self, left, right):
-        print(left.size())
-        print(right.size())
         embeds_left = self.embeddings(left)
         embeds_right = self.embeddings(right)
         
@@ -50,6 +49,4 @@ class SimpleLSTM(nn.Module):
         
         x = self.fc1(x)
 
-        print(left_out.size())
-        print(right_out.size())
         return x
