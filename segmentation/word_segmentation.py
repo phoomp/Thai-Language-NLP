@@ -6,6 +6,8 @@ from torch.utils.data import DataLoader
 from BEST import BESTDataset, CharacterTokenizer
 from BESTModels import SimpleLSTM
 
+from losses import batch_all_triplet_loss, batch_hard_triplet_loss
+
 
 parser = argparse.ArgumentParser('Train a word segmentation model')
 
@@ -20,10 +22,10 @@ def main():
     TEST_PATH = args.test_path
     
     surround = 64
-    batch_size = 64
-    device = 'mps'
+    batch_size = 512
+    device = 'cuda:0'
 
-    dataset = BESTDataset(TRAIN_PATH, TEST_PATH, surround=surround, return_idx=True)
+    dataset = BESTDataset(TRAIN_PATH, TEST_PATH, surround=surround, return_idx=False, select_pos_only=True)
     
     char_remove_list = ['^', '=', '+', '~', '\\\\', r'\ufeff', '_', '$', '?', '@', '#']
     
@@ -42,9 +44,11 @@ def main():
     vocab_size = len(dataset.tokenizer)
     embedding_dim = surround
     
-    loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
-    model = SimpleLSTM(vocab_size, embedding_dim, batch_size).to('mps')
-    loss_fn = torch.nn.BCEWithLogitsLoss()
+    loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
+    model = SimpleLSTM(vocab_size, embedding_dim, batch_size).to(device)
+    weight = torch.as_tensor([3.6877]).to(device)
+    loss_fn = torch.nn.BCEWithLogitsLoss(pos_weight=weight)
+    # loss_fn = batch_all_triplet_losss
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
     
     # TODO: Define a loss function for contrastive loss
@@ -52,23 +56,53 @@ def main():
     
     print(len(dataset))
 
-    for batch, (left_frame, right_frame, label, idx) in enumerate(loader):
-        left_frame = left_frame.to(device)
-        right_frame = right_frame.to(device)
+    for batch, (pos, neg) in enumerate(loader):
+        lpos, rpos, label_pos = pos
+        lneg, rneg, label_neg = neg
         
-        label = label.type(torch.LongTensor).to(device)
+        lpos = lpos.to(device)
+        rpos = rpos.to(device)
         
-        label = label.to(torch.int64).to(device)
-        prediction = model(left_frame, right_frame)
-        loss = loss_fn(prediction, label.float())
+        label_pos = label_pos.type(torch.LongTensor).to(device)
+        
+        lneg = lneg.to(device)
+        rneg = rneg.to(device)
+        
+        label_neg = label_neg.type(torch.LongTensor).to(device)
+        
+        pred_pos = model(lpos, rpos)
+        loss_pos = loss_fn(pred_pos, label_pos.float())
         
         optimizer.zero_grad()
-        loss.backward()
+        loss_pos.backward()
         optimizer.step()
         
-        print(f'Batch {batch} of {len(loader) / batch_size}')
-        print(loss)
-
+        pred_neg = model(lneg, rneg)
+        loss_neg = loss_fn(pred_neg, label_neg.float())
+        
+        optimizer.zero_grad()
+        loss_neg.backward()
+        optimizer.step()
+    
+        print(f'Batch {batch} of {len(dataset) / batch_size}')
+        print(f'positive loss: {loss_pos.item()}')
+        print(f'negative loss: {loss_neg.item()}')
+    
+    # for batch, (left, right, label) in enumerate(loader):
+    #     left = left.to(device)
+    #     right = right.to(device)
+        
+    #     label = label.type(torch.LongTensor).to(device)
+        
+    #     pred = model(left, right)
+    #     loss, _ = loss_fn(label, pred, margin=1.0)
+        
+    #     optimizer.zero_grad()
+    #     loss.backward()
+    #     optimizer.step()
+    
+    #     print(f'Batch {batch} of {len(dataset) / batch_size}')
+    #     print(f'hard triplet loss: {loss.item()}')
     
 
 if __name__ == '__main__':

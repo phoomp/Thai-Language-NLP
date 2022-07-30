@@ -1,5 +1,6 @@
 import os
 import re
+import random
 
 import numpy as np
 
@@ -68,7 +69,7 @@ class CharacterTokenizer:
 
 
     def __onehot(self, x):
-        print(f'Generating one-hot array of size ({len(x)}, {len(self.dictionary)})')
+        # print(f'Generating one-hot array of size ({len(x)}, {len(self.dictionary)})')
         arr = np.zeros((len(x), len(self.dictionary)))
         for i, e in enumerate(x):
             arr[i][e] = 1
@@ -95,7 +96,7 @@ class CharacterTokenizer:
             
 
 class BESTDataset(Dataset):
-    def __init__(self, train_path=None, test_path=None, surround=128, return_idx=False):
+    def __init__(self, train_path=None, test_path=None, surround=128, return_idx=False, select_pos_only=True):
         self.train_path = train_path
         self.test_path = test_path
 
@@ -105,6 +106,8 @@ class BESTDataset(Dataset):
         self.tokenizer = None
         self.surround = surround
         self.return_idx = return_idx
+        
+        self.select_positive_only = select_pos_only
 
         # self.train_str = self.train_str.decode()
         # self.test_str = self.test_str.decode()
@@ -225,13 +228,33 @@ class BESTDataset(Dataset):
             # 1-0 label whether the word should be separated at position or not
             self.train_labels = np.zeros(len(self.train_str) - 1)
             self.test_labels = np.zeros(len(self.test_str) - 1)
+            
+            self.train_labels_pos = []
+            self.test_labels_pos = []
+            
+            self.train_labels_neg = []
+            self.test_labels_neg = []
 
             for idx in self.train_bar_idx:
                 self.train_labels[idx] = 1
+                self.train_labels_pos.append(idx)
             
             for idx in self.test_bar_idx:
                 self.test_labels[idx] = 1
+                self.test_labels_pos.append(idx)
                 
+                
+            print(f'weight should be {len(self.train_labels) / len(self.train_labels_pos)}')
+                
+            # for idx in range(len(self.train_str)):
+            #     print(idx)
+            #     if idx not in self.train_labels_pos:
+            #         self.train_labels_neg.append(idx)
+                    
+            # for idx in range(len(self.test_str)):
+            #     if idx not in self.test_labels_pos:
+            #         self.test_labels_neg.append(idx)
+                        
             print('processed train features')
             print(self.test_str[:40])
             print('processed train labels')
@@ -247,8 +270,7 @@ class BESTDataset(Dataset):
         
         elif split == None:
             self.train_ds = (self.train_str, self.train_labels)
-            self.test_ds = (self.test_str, self.test_labels)
-            
+            self.test_ds = (self.test_str, self.test_labels)            
         else:
             print('Modes other than sentences are not yet supported')
             raise NotImplementedError
@@ -260,21 +282,13 @@ class BESTDataset(Dataset):
             
             
     def __len__(self):
-        return len(self.train_labels) - 1
+        if self.select_positive_only:
+            return len(self.train_labels_pos) - 1
+        else:
+            return len(self.train_labels) - 1
 
 
-    def __getitem__(self, idx):
-        """Get items based on index
-
-        Args:
-            idx (torch.Tensor or np.ndarray): Index for data to be retrieved
-        """
-        if self.tokenizer == None:
-            raise ValueError('self.tokenizer is None, please assign a valid tokenizer before enumerating the dataset')        
-        
-        if torch.is_tensor(idx):
-            idx = idx.to_list()
-
+    def _getall(self, idx):
         label = self.train_labels[idx]
 
         left_idx = idx - self.surround
@@ -319,3 +333,26 @@ class BESTDataset(Dataset):
             return left_frame, right_frame, label.unsqueeze(-1), idx
         else:      
             return left_frame, right_frame, label.unsqueeze(-1)
+
+
+    def __getitem__(self, idx):
+        """Get items based on index
+
+        Args:
+            idx (torch.Tensor or np.ndarray): Index for data to be retrieved
+        """
+        if self.tokenizer == None:
+            raise ValueError('self.tokenizer is None, please assign a valid tokenizer before enumerating the dataset')        
+        
+        if torch.is_tensor(idx):
+            idx = idx.to_list()
+
+        if self.select_positive_only:
+            # Choose a negative sample
+            random_idx = None
+            
+            while random_idx == None or random_idx in self.train_labels_pos:
+                random_idx = random.randint(0, len(self.train_str))
+            return self._getall(self.train_labels_pos[idx]), self._getall(random_idx)
+        else:
+            return self._getall(idx)        
