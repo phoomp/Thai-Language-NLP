@@ -44,7 +44,7 @@ def main():
     vocab_size = len(dataset.tokenizer)
     embedding_dim = surround
     
-    loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
+    loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
     model = SimpleLSTM(vocab_size, embedding_dim, batch_size).to(device)
     weight = torch.as_tensor([3.6877]).to(device)
     loss_fn = torch.nn.BCEWithLogitsLoss(pos_weight=weight)
@@ -56,26 +56,26 @@ def main():
     
     print(len(dataset))
 
-    for batch, (pos, neg) in enumerate(loader):
-        lpos, rpos, label_pos = pos
+    for batch, (_, neg) in enumerate(loader):
+        # lpos, rpos, label_pos = pos
         lneg, rneg, label_neg = neg
         
-        lpos = lpos.to(device)
-        rpos = rpos.to(device)
+        # lpos = lpos.to(device)
+        # rpos = rpos.to(device)
         
-        label_pos = label_pos.type(torch.LongTensor).to(device)
+        # label_pos = label_pos.type(torch.LongTensor).to(device)
         
         lneg = lneg.to(device)
         rneg = rneg.to(device)
         
         label_neg = label_neg.type(torch.LongTensor).to(device)
         
-        pred_pos = model(lpos, rpos)
-        loss_pos = loss_fn(pred_pos, label_pos.float())
+        # pred_pos = model(lpos, rpos)
+        # loss_pos = loss_fn(pred_pos, label_pos.float())
         
-        optimizer.zero_grad()
-        loss_pos.backward()
-        optimizer.step()
+        # optimizer.zero_grad()
+        # loss_pos.backward()
+        # optimizer.step()
         
         pred_neg = model(lneg, rneg)
         loss_neg = loss_fn(pred_neg, label_neg.float())
@@ -85,8 +85,8 @@ def main():
         optimizer.step()
     
         print(f'Batch {batch} of {len(dataset) / batch_size}')
-        print(f'positive loss: {loss_pos.item()}')
-        print(f'negative loss: {loss_neg.item()}')
+        # print(f'positive loss: {loss_pos.item()}')
+        print(f'loss: {loss_neg.item()}')
     
     # for batch, (left, right, label) in enumerate(loader):
     #     left = left.to(device)

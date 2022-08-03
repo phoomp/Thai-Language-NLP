@@ -20,14 +20,14 @@ class SimpleLSTM(nn.Module):
         self.lstm_input_size = int(embedding_dim * vocab_size * self.embed_dim)
         
         self.left_lstm = nn.Sequential(
-            nn.LSTM(self.lstm_input_size, 128, batch_first=True)
+            nn.LSTM(self.lstm_input_size, 64, batch_first=True)
         )
         
         self.right_lstm = nn.Sequential(
-            nn.LSTM(self.lstm_input_size, 128, batch_first=True)
+            nn.LSTM(self.lstm_input_size, 64, batch_first=True)
         )
         
-        self.fc1 = nn.Linear(256, 1)
+        self.fc1 = nn.Linear(128, 1)
         
     
     def forward(self, left, right):

@@ -329,6 +329,8 @@ class BESTDataset(Dataset):
         left_frame = torch.Tensor(left_frame).to(torch.int64)
         right_frame = torch.Tensor(right_frame).to(torch.int64)
         
+        right_frame = right_frame.flip(1)
+           
         if self.return_idx:
             return left_frame, right_frame, label.unsqueeze(-1), idx
         else:      
@@ -349,10 +351,10 @@ class BESTDataset(Dataset):
 
         if self.select_positive_only:
             # Choose a negative sample
-            random_idx = None
+            random_idx = random.randint(0, len(self.train_str))
             
-            while random_idx == None or random_idx in self.train_labels_pos:
-                random_idx = random.randint(0, len(self.train_str))
+            # while random_idx == None or random_idx in self.train_labels_pos:
+            #     random_idx = random.randint(0, len(self.train_str))
             return self._getall(self.train_labels_pos[idx]), self._getall(random_idx)
         else:
             return self._getall(idx)        
